@@ -51,7 +51,17 @@ export async function POST(request: NextRequest) {
     // TEACHER: generate code + PENDING status (needs admin approval)
     // STUDENT: ACTIVE immediately
     const isTeacher = role === 'TEACHER';
-    const autoTeacherCode = isTeacher ? generateTeacherCode() : null;
+    let autoTeacherCode: string | null = null;
+    if (isTeacher) {
+      // Generate unique teacher code, checking for duplicates in DB
+      let attempts = 0;
+      do {
+        autoTeacherCode = generateTeacherCode();
+        const existingCode = await userOps.findUnique({ where: { teacherCode: autoTeacherCode } });
+        if (!existingCode) break;
+        attempts++;
+      } while (attempts < 10);
+    }
     const status = isTeacher ? 'PENDING' : 'ACTIVE';
 
     const newUser = await userOps.create({
@@ -119,7 +129,8 @@ export async function POST(request: NextRequest) {
         name: newUser.name as string,
         role: newUser.role as string,
         status: newUser.status as string,
-        teacherCode: (newUser.teacherCode as string) || null,
+        // Only include teacherCode if the teacher is ACTIVE (approved)
+        teacherCode: status === 'ACTIVE' ? ((newUser.teacherCode as string) || null) : null,
         institution: (newUser.institution as string) || null,
         avatar: (newUser.avatar as string) || null,
       },

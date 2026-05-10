@@ -19,6 +19,9 @@ import {
   Target,
   TrendingUp,
   Info,
+  BookOpen,
+  ExternalLink,
+  Flame,
 } from 'lucide-react';
 import { ErrorAnnotationsList, TextDiffView } from '@/components/error-annotations';
 import { AnnotatedTextView } from './annotated-text';
@@ -26,7 +29,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { useAppStore, type Essay, type SelfAssessment } from '@/store/app-store';
+import { useAppStore, type Essay, type SelfAssessment, type StudyTopic } from '@/store/app-store';
 import { apiFetch } from './api-fetch';
 import { ScoreRadarChart, PerformanceComparisonChart } from './stats-charts';
 import { AnimatedCounter } from './animated-counter';
@@ -587,6 +590,109 @@ function ReflectiveAssessmentView({ assessment, essayErrors }: ReflectiveAssessm
   );
 }
 
+// ─── Study Topics Card Component ──────────────────────────────
+
+function StudyTopicsCard({ topics }: { topics: StudyTopic[] }) {
+  const [expanded, setExpanded] = useState(true);
+
+  const priorityConfig: Record<string, { badge: string; icon: typeof Flame; label: string }> = {
+    alta: { badge: 'bg-rose-100 text-rose-700 border-rose-200', icon: Flame, label: 'Alta priorità' },
+    media: { badge: 'bg-amber-100 text-amber-700 border-amber-200', icon: TrendingUp, label: 'Media priorità' },
+    bassa: { badge: 'bg-emerald-100 text-emerald-700 border-emerald-200', icon: CheckCircle2, label: 'Bassa priorità' },
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, delay: 0.55 }}
+    >
+      <Card className="border-teal-100 bg-gradient-to-br from-teal-50/30 to-amber-50/20">
+        <CardHeader className="pb-2">
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="flex items-center justify-between w-full"
+          >
+            <CardTitle className="text-base text-amber-900 flex items-center gap-2">
+              <BookOpen className="h-4 w-4 text-teal-500" />
+              Temi di studio consigliati
+              <Badge variant="outline" className="bg-teal-50 text-teal-700 border-teal-200 ml-2">
+                {topics.length} {topics.length === 1 ? 'tema' : 'temi'}
+              </Badge>
+            </CardTitle>
+            <motion.div
+              animate={{ rotate: expanded ? 0 : 180 }}
+              transition={{ duration: 0.2 }}
+            >
+              <ChevronUp className="h-4 w-4 text-amber-600" />
+            </motion.div>
+          </button>
+        </CardHeader>
+        <AnimatePresence initial={false}>
+          {expanded && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+            >
+              <CardContent className="space-y-3">
+                <p className="text-sm text-amber-700/60">
+                  Sulla base degli errori trovati, ti consigliamo di approfondire questi argomenti:
+                </p>
+                <div className="space-y-3">
+                  {topics.map((topic, idx) => {
+                    const config = priorityConfig[topic.priority] || priorityConfig.media;
+                    const PriorityIcon = config.icon;
+                    return (
+                      <motion.div
+                        key={`${topic.topic}-${idx}`}
+                        initial={{ opacity: 0, x: -10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: idx * 0.1, duration: 0.3 }}
+                        className="rounded-lg border border-teal-100 bg-white p-4 shadow-sm transition-all duration-300 hover:shadow-md hover:bg-teal-50/20"
+                      >
+                        <div className="flex flex-wrap items-start gap-2 mb-2">
+                          <h4 className="text-sm font-semibold text-amber-900 flex items-center gap-1.5">
+                            <BookOpen className="h-3.5 w-3.5 text-teal-500 shrink-0" />
+                            {topic.topic}
+                          </h4>
+                          <Badge className={`text-[10px] ${config.badge}`}>
+                            <PriorityIcon className="h-3 w-3 mr-1" />
+                            {config.label}
+                          </Badge>
+                        </div>
+                        {topic.description && (
+                          <p className="text-sm text-amber-700/70 leading-relaxed mb-3">
+                            {topic.description}
+                          </p>
+                        )}
+                        {topic.resources.length > 0 && (
+                          <div className="flex flex-wrap gap-2">
+                            {topic.resources.map((resource, rIdx) => (
+                              <span
+                                key={rIdx}
+                                className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-md bg-teal-50 text-teal-700 border border-teal-100 transition-colors duration-200 hover:bg-teal-100"
+                              >
+                                <ExternalLink className="h-3 w-3" />
+                                {resource}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </motion.div>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </Card>
+    </motion.div>
+  );
+}
+
 // ─── Main Essay Detail Component ─────────────────────────────
 
 export function EssayDetail() {
@@ -605,12 +711,13 @@ export function EssayDetail() {
 
     async function loadDetail() {
       try {
-        const data = await apiFetch<Essay>(`/api/essays/${currentEssay!.id}`);
-        setEssay(data);
-        setCurrentEssay(data);
+        const data = await apiFetch<{ essay: Essay }>(`/api/essays/${currentEssay!.id}`);
+        const essayData = data.essay;
+        setEssay(essayData);
+        setCurrentEssay(essayData);
         // Load self-assessment if available
-        if (data.selfAssessments && data.selfAssessments.length > 0) {
-          setAssessment(data.selfAssessments[0]);
+        if (essayData.selfAssessments && essayData.selfAssessments.length > 0) {
+          setAssessment(essayData.selfAssessments[0]);
         }
       } catch {
         // Use current essay data
@@ -640,11 +747,11 @@ export function EssayDetail() {
         body.targetLevel = targetLevel;
       }
 
-      const corrected = await apiFetch<Essay>(`/api/essays/${essay.id}/correct`, {
+      const correctionResponse = await apiFetch<{ essay: Essay }>(`/api/essays/${essay.id}/correct`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
+      const corrected = correctionResponse.essay;
       setEssay(corrected);
       setCurrentEssay(corrected);
       // Update essay in list
@@ -964,6 +1071,11 @@ export function EssayDetail() {
         >
           <ErrorAnnotationsList annotations={essay.errorAnnotations} />
         </motion.div>
+      )}
+
+      {/* Study Topics */}
+      {essay.studyTopics && essay.studyTopics.length > 0 && showResults && !isCorrecting && (
+        <StudyTopicsCard topics={essay.studyTopics} />
       )}
 
       {/* Self assessment section */}

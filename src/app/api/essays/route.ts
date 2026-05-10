@@ -137,6 +137,7 @@ export async function GET(request: NextRequest) {
       errorAnnotations: (essay.errorAnnotations as string) || null,
       errors: parseJsonField(essay.errors),
       cilsLevelAssessment: parseJsonField(essay.cilsLevelAssessment),
+      studyTopics: parseJsonField(essay.studyTopics),
       status: essay.status as string,
       createdAt: essay.createdAt as string,
       updatedAt: essay.updatedAt as string,
@@ -174,6 +175,13 @@ export async function POST(request: NextRequest) {
     if (!title || !content) {
       return NextResponse.json(
         { error: 'Titolo e contenuto sono obbligatori' },
+        { status: 400 }
+      );
+    }
+
+    if (content.length > 50000) {
+      return NextResponse.json(
+        { error: 'Il contenuto è troppo lungo (massimo 50.000 caratteri)' },
         { status: 400 }
       );
     }

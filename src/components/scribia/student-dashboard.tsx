@@ -124,12 +124,12 @@ export function StudentDashboard() {
     async function loadData() {
       setLoading(true);
       try {
-        const [essaysData, statsData] = await Promise.all([
+        const [essaysData, statsResponse] = await Promise.all([
           apiFetch<EssaysResponse>('/api/essays'),
-          apiFetch<Stats>('/api/stats'),
+          apiFetch<{ stats: Stats }>('/api/stats'),
         ]);
         setEssays(essaysData.essays);
-        setStats(statsData);
+        setStats(statsResponse.stats);
       } catch {
         // Use store data as fallback
       } finally {

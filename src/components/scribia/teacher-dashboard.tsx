@@ -82,7 +82,7 @@ const itemVariants = {
 };
 
 export function TeacherDashboard() {
-  const { user, essays, setEssays, setCurrentView, setCurrentEssay } = useAppStore();
+  const { user, essays, setEssays, setCurrentView, setCurrentEssay, setSelectedStudentId } = useAppStore();
   const [stats, setStats] = useState<TeacherStats | null>(null);
   const [enrichedStudents, setEnrichedStudents] = useState<StudentWithStats[]>([]);
   const [loading, setLoading] = useState(true);
@@ -91,13 +91,13 @@ export function TeacherDashboard() {
     async function loadData() {
       setLoading(true);
       try {
-        const [essaysData, statsData, studentsData] = await Promise.all([
+        const [essaysData, statsResponse, studentsData] = await Promise.all([
           apiFetch<EssaysResponse>('/api/essays'),
-          apiFetch<TeacherStats>('/api/stats'),
+          apiFetch<{ stats: TeacherStats }>('/api/stats'),
           apiFetch<{ students: StudentWithStats[] }>('/api/teacher/students'),
         ]);
         setEssays(essaysData.essays);
-        setStats(statsData);
+        setStats(statsResponse.stats);
         setEnrichedStudents(studentsData.students || []);
       } catch {
         // Use store data as fallback
@@ -244,6 +244,7 @@ export function TeacherDashboard() {
                     <button
                       key={student.id}
                       onClick={() => {
+                        setSelectedStudentId(student.id);
                         setCurrentView('student-detail');
                       }}
                       className="flex items-center gap-3 w-full p-3 rounded-lg border border-amber-100 hover:bg-amber-50 transition-all duration-300 hover:shadow-sm hover:-translate-y-0.5 text-left group active:scale-[0.99]"

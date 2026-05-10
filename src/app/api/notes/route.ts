@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireRole } from '@/lib/auth';
-import { teacherNoteOps, userOps } from '@/lib/db';
+import { teacherNoteOps, userOps, enrollmentOps } from '@/lib/db';
 import crypto from 'crypto';
 
 // GET /api/notes - List teacher notes
@@ -65,6 +65,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: 'Studente non trovato' },
         { status: 404 }
+      );
+    }
+
+    // Verify the student is enrolled with this teacher
+    const enrollment = await enrollmentOps.findUnique({
+      where: { teacherId: user.userId, studentId },
+    });
+    if (!enrollment) {
+      return NextResponse.json(
+        { error: 'Non autorizzato — lo studente non è iscritto alla tua classe' },
+        { status: 403 }
       );
     }
 

@@ -32,6 +32,7 @@ export interface DemoEssay {
   error_annotations?: string;
   errors?: string;  // JSON string of ErrorItem[]
   cils_level_assessment?: string;  // JSON string of CilsLevelAssessment
+  study_topics?: string;  // JSON string of StudyTopic[]
   status: 'SUBMITTED' | 'CORRECTED';
   created_at: string;
   updated_at: string;
@@ -106,12 +107,14 @@ export function generateTeacherCode(): string {
   for (let i = 0; i < 6; i++) {
     code += chars.charAt(Math.floor(Math.random() * chars.length));
   }
-  // Ensure uniqueness
-  while (demoStore.users.some((u) => u.teacher_code === code)) {
+  // Ensure uniqueness in demo store
+  let attempts = 0;
+  while (demoStore.users.some((u) => u.teacher_code === code) && attempts < 100) {
     code = '';
     for (let i = 0; i < 6; i++) {
       code += chars.charAt(Math.floor(Math.random() * chars.length));
     }
+    attempts++;
   }
   return code;
 }
@@ -230,6 +233,14 @@ export function seedDemoData() {
       readiness: 'Il testo dimostra un livello A2 solido con frasi semplici ma corrette. Per raggiungere B1, ampliare il vocabolario e usare strutture sintattiche più variate.',
       targetLevelProvided: null
     }),
+    study_topics: JSON.stringify([
+      {
+        topic: 'Ausiliari essere e avere',
+        description: 'I verbi di movimento (andare, venire, uscire, tornare) richiedono l\'ausiliare "essere" anziché "avere". Questo è uno degli errori più comuni per chi studia l\'italiano.',
+        priority: 'alta',
+        resources: ['Grammatica italiana - Capitolo ausiliari', 'Esercizi online su essere/avere']
+      }
+    ]),
     status: 'CORRECTED',
     created_at: now,
     updated_at: now,
@@ -272,6 +283,14 @@ export function seedDemoData() {
       readiness: 'Il testo dimostra un solido B1 con buona coerenza, lessico adeguato e uso di connettivi. Per raggiungere B2, variare ulteriormente il lessico e introdurre subordinate più complesse.',
       targetLevelProvided: 'B1'
     }),
+    study_topics: JSON.stringify([
+      {
+        topic: 'Lessico e registro linguistico',
+        description: 'Scegliere il vocabolo più appropriato al contesto e al registro (formale/informale) migliora la qualità del testo. Un dizionario dei sinonimi è uno strumento prezioso.',
+        priority: 'media',
+        resources: ['Dizionario dei sinonimi e contrari', 'Lessico italiano per stranieri', 'Esercizi sul registro linguistico']
+      }
+    ]),
     status: 'CORRECTED',
     created_at: new Date(Date.now() - 86400000).toISOString(),
     updated_at: new Date(Date.now() - 86400000).toISOString(),
@@ -314,6 +333,20 @@ export function seedDemoData() {
       readiness: 'Testo di livello B2 avanzato con struttura argomentativa complessa, lessico ricco e padronanza dei connettivi. Per raggiungere C1, affinare ulteriormente le sfumature stilistiche e variare le strutture sintattiche.',
       targetLevelProvided: 'B2'
     }),
+    study_topics: JSON.stringify([
+      {
+        topic: 'Scelta lessicale e precisione',
+        description: 'Nei testi formali argomentativi, la scelta lessicale deve essere precisa ed elegante. "Anziché" esprime opposizione con maggiore precisione di "piuttosto che".',
+        priority: 'bassa',
+        resources: ['Grammatica avanzata - Scelta lessicale', 'Esercizi sul registro formale']
+      },
+      {
+        topic: 'Connettivi testuali avanzati',
+        description: 'Padroneggiare i connettivi testuali avanzati (tuttavia, nondimeno, pertanto, invero) permette di costruire testi argomentativi più sofisticati.',
+        priority: 'media',
+        resources: ['Connettivi testuali - Guida completa', 'Scrittura argomentativa avanzata']
+      }
+    ]),
     status: 'CORRECTED',
     created_at: new Date(Date.now() - 172800000).toISOString(),
     updated_at: new Date(Date.now() - 172800000).toISOString(),
@@ -359,6 +392,14 @@ export function seedDemoData() {
       readiness: 'Buon livello A2 con frasi corrette e vocabolario adeguato al contesto familiare. Per B1, ampliare il lessico e usare strutture più complesse.',
       targetLevelProvided: null
     }),
+    study_topics: JSON.stringify([
+      {
+        topic: 'Ampliamento del lessico',
+        description: 'Il testo non presenta errori significativi. Per migliorare ulteriormente, amplia il vocabolario con sinonimi, espressioni idiomatiche e un registro più vario.',
+        priority: 'bassa',
+        resources: ['Dizionario dei sinonimi e contrari', 'Lettura di testi autentici italiani']
+      }
+    ]),
     status: 'CORRECTED',
     created_at: new Date(Date.now() - 43200000).toISOString(),
     updated_at: new Date(Date.now() - 43200000).toISOString(),

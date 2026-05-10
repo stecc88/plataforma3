@@ -34,10 +34,10 @@ const CILS_COLORS: Record<string, string> = {
 };
 
 export function StudentDetail() {
-  const { essays, students, setCurrentEssay, setCurrentView, teacherNotes, setTeacherNotes } = useAppStore();
+  const { essays, students, selectedStudentId, setCurrentEssay, setCurrentView, teacherNotes, setTeacherNotes } = useAppStore();
 
-  // Use first student as selected (in a real app this would be from URL params)
-  const student = students[0];
+  // Find the selected student by ID
+  const student = students.find(s => s.id === selectedStudentId) || students[0];
   const studentEssays = useMemo(
     () => essays
       .filter((e) => e.studentId === student?.id)
@@ -85,10 +85,11 @@ export function StudentDetail() {
     if (!noteText.trim() || !student) return;
     setIsSavingNote(true);
     try {
-      const note = await apiFetch<TeacherNote>('/api/notes', {
+      const response = await apiFetch<{ note: TeacherNote }>('/api/notes', {
         method: 'POST',
         body: JSON.stringify({ studentId: student.id, content: noteText.trim() }),
       });
+      const note = response.note;
       setTeacherNotes([note, ...teacherNotes]);
       setNoteText('');
       toast.success('Nota salvata');

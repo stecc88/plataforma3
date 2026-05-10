@@ -1,7 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAuthUser } from '@/lib/auth';
-import { essayOps, userOps } from '@/lib/db';
+import { getAuthUser, requireRole } from '@/lib/auth';
+import { essayOps, userOps, enrollmentOps } from '@/lib/db';
 import { correctEssay } from '@/lib/ai';
+
+// ─── Simple in-memory rate limiter ────────────────────────────
+const correctionTimestamps = new Map<string, number[]>();
+const RATE_LIMIT_WINDOW = 60_000; // 1 minute
+const RATE_LIMIT_MAX = 5; // max 5 corrections per minute per user
+
+function checkRateLimit(userId: string): boolean {
+  const now = Date.now();
+  const timestamps = correctionTimestamps.get(userId) || [];
+  // Remove timestamps outside the window
+  const recent = timestamps.filter((t) => now - t < RATE_LIMIT_WINDOW);
+  if (recent.length >= RATE_LIMIT_MAX) {
+    return false; // Rate limited
+  }
+  recent.push(now);
+  correctionTimestamps.set(userId, recent);
+  return true;
+}
 
 // POST /api/essays/[id]/correct - AI correct essay with optional CILS level assessment
 export async function POST(
@@ -11,6 +29,14 @@ export async function POST(
   try {
     const user = await getAuthUser(request);
     if (user instanceof NextResponse) return user;
+
+    // Rate limit check
+    if (!checkRateLimit(user.userId)) {
+      return NextResponse.json(
+        { error: 'Troppe richieste. Riprova tra un minuto.' },
+        { status: 429 }
+      );
+    }
 
     const { id } = await params;
 
@@ -29,6 +55,19 @@ export async function POST(
         { error: 'Non autorizzato' },
         { status: 403 }
       );
+    }
+
+    // Teacher must be enrolled with the student
+    if (user.role === 'TEACHER') {
+      const enrollment = await enrollmentOps.findUnique({
+        where: { teacherId: user.userId, studentId: essay.studentId as string },
+      });
+      if (!enrollment) {
+        return NextResponse.json(
+          { error: 'Non autorizzato — lo studente non è iscritto alla tua classe' },
+          { status: 403 }
+        );
+      }
     }
 
     // Parse optional targetLevel from request body
@@ -62,6 +101,9 @@ export async function POST(
     const errors = correction.errors.length > 0
       ? JSON.stringify(correction.errors)
       : null;
+    const studyTopics = correction.studyTopics.length > 0
+      ? JSON.stringify(correction.studyTopics)
+      : null;
 
     // Update essay
     const updated = await essayOps.update({
@@ -77,6 +119,7 @@ export async function POST(
         errorAnnotations: correction.errorAnnotations,
         cilsLevelAssessment,
         errors,
+        studyTopics,
         status: 'CORRECTED',
         updatedAt: now,
       },
@@ -110,6 +153,17 @@ export async function POST(
       parsedErrors = [];
     }
 
+    let parsedStudyTopics: unknown[] = [];
+    try {
+      if ((updated as Record<string, unknown>).studyTopics) {
+        parsedStudyTopics = typeof (updated as Record<string, unknown>).studyTopics === 'string'
+          ? JSON.parse((updated as Record<string, unknown>).studyTopics as string)
+          : (updated as Record<string, unknown>).studyTopics;
+      }
+    } catch {
+      parsedStudyTopics = [];
+    }
+
     return NextResponse.json({
       essay: {
         id: updated.id as string,
@@ -127,6 +181,7 @@ export async function POST(
         errorAnnotations: updated.errorAnnotations as string,
         errors: parsedErrors,
         cilsLevelAssessment: parsedCilsAssessment,
+        studyTopics: parsedStudyTopics,
         status: updated.status as string,
         createdAt: updated.createdAt as string,
         updatedAt: updated.updatedAt as string,

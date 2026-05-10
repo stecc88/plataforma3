@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 
 // ─── localStorage key for JWT token ─────────────────────────
-const TOKEN_KEY = 'escribia_token';
+export const TOKEN_KEY = 'escribia_token';
 
 /** Safely read token from localStorage (SSR-safe) */
 function getStoredToken(): string | null {
@@ -57,6 +57,13 @@ export interface User {
   avatar?: string;
 }
 
+export interface StudyTopic {
+  topic: string;
+  description: string;
+  priority: 'alta' | 'media' | 'bassa';
+  resources: string[];
+}
+
 export interface Essay {
   id: string;
   studentId: string;
@@ -78,6 +85,7 @@ export interface Essay {
     readiness: string;
     targetLevelProvided?: string | null;
   } | null;
+  studyTopics?: StudyTopic[];
   status: 'SUBMITTED' | 'CORRECTED';
   createdAt: string;
   updatedAt: string;
@@ -137,6 +145,7 @@ interface AppState {
 
   // Navigation
   currentView: ViewType;
+  selectedStudentId: string | null;
 
   // Data
   essays: Essay[];
@@ -155,6 +164,7 @@ interface AppState {
   setUser: (user: User | null, token?: string | null) => void;
   logout: () => void;
   setCurrentView: (view: ViewType) => void;
+  setSelectedStudentId: (id: string | null) => void;
   setEssays: (essays: Essay[]) => void;
   setCurrentEssay: (essay: Essay | null) => void;
   setSelfAssessments: (assessments: SelfAssessment[]) => void;
@@ -178,6 +188,7 @@ export const useAppStore = create<AppState>((set) => ({
 
   // Navigation
   currentView: 'landing' as ViewType,
+  selectedStudentId: null as string | null,
 
   // Data
   essays: [],
@@ -212,6 +223,7 @@ export const useAppStore = create<AppState>((set) => ({
       token: null,
       isAuthenticated: false,
       currentView: 'landing' as ViewType,
+      selectedStudentId: null,
       essays: [],
       currentEssay: null,
       selfAssessments: [],
@@ -223,6 +235,7 @@ export const useAppStore = create<AppState>((set) => ({
   },
 
   setCurrentView: (view) => set({ currentView: view }),
+  setSelectedStudentId: (id) => set({ selectedStudentId: id }),
   setEssays: (essays) => set({ essays }),
   setCurrentEssay: (essay) => set({ currentEssay: essay }),
   setSelfAssessments: (assessments) => set({ selfAssessments: assessments }),

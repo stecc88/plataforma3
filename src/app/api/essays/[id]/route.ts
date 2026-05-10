@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAuthUser } from '@/lib/auth';
+import { getAuthUser, requireRole } from '@/lib/auth';
 import { essayOps, userOps, selfAssessmentOps, enrollmentOps } from '@/lib/db';
 
 /** Helper: safely parse JSON fields stored as strings in the DB */
@@ -91,6 +91,7 @@ export async function GET(
         errorAnnotations: (essay.errorAnnotations as string) || null,
         errors: parseJsonField(essay.errors),
         cilsLevelAssessment: parseJsonField(essay.cilsLevelAssessment),
+        studyTopics: parseJsonField(essay.studyTopics),
         status: essay.status as string,
         createdAt: essay.createdAt as string,
         updatedAt: essay.updatedAt as string,
@@ -100,6 +101,82 @@ export async function GET(
     });
   } catch (error) {
     console.error('Get essay error:', error);
+    return NextResponse.json(
+      { error: 'Errore interno del server' },
+      { status: 500 }
+    );
+  }
+}
+
+// PUT /api/essays/[id] - Update essay (only STUDENT, only own essays)
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const user = await requireRole(request, 'STUDENT');
+    if (user instanceof NextResponse) return user;
+
+    const { id } = await params;
+    const body = await request.json();
+    const { title, content, topic } = body;
+
+    const essay = await essayOps.findUnique({ where: { id } });
+    if (!essay) {
+      return NextResponse.json(
+        { error: 'Tema non trovato' },
+        { status: 404 }
+      );
+    }
+
+    if (essay.studentId !== user.userId) {
+      return NextResponse.json(
+        { error: 'Non autorizzato' },
+        { status: 403 }
+      );
+    }
+
+    const now = new Date().toISOString();
+    const updated = await essayOps.update({
+      where: { id },
+      data: {
+        ...(title !== undefined && { title }),
+        ...(content !== undefined && { content }),
+        ...(topic !== undefined && { topic: topic || null }),
+        updatedAt: now,
+      },
+    });
+
+    const student = await userOps.findUnique({
+      where: { id: user.userId },
+    });
+
+    return NextResponse.json({
+      essay: {
+        id: updated.id as string,
+        studentId: updated.studentId as string,
+        title: updated.title as string,
+        content: updated.content as string,
+        topic: (updated.topic as string) || null,
+        correctedContent: (updated.correctedContent as string) || null,
+        score: (updated.score as number) ?? null,
+        grammarScore: (updated.grammarScore as number) ?? null,
+        coherenceScore: (updated.coherenceScore as number) ?? null,
+        vocabularyScore: (updated.vocabularyScore as number) ?? null,
+        clarityScore: (updated.clarityScore as number) ?? null,
+        aiFeedback: (updated.aiFeedback as string) || null,
+        errorAnnotations: (updated.errorAnnotations as string) || null,
+        errors: parseJsonField(updated.errors),
+        cilsLevelAssessment: parseJsonField(updated.cilsLevelAssessment),
+        studyTopics: parseJsonField(updated.studyTopics),
+        status: updated.status as string,
+        createdAt: updated.createdAt as string,
+        updatedAt: updated.updatedAt as string,
+        studentName: (student?.name as string) || 'Sconosciuto',
+      },
+    });
+  } catch (error) {
+    console.error('Update essay error:', error);
     return NextResponse.json(
       { error: 'Errore interno del server' },
       { status: 500 }

@@ -22,13 +22,15 @@ import { apiFetch } from './api-fetch';
 import { toast } from 'sonner';
 
 export function ClassPreparations() {
-  const { classPreparations, setClassPreparations } = useAppStore();
+  const { classPreparations, setClassPreparations, students } = useAppStore();
   
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [title, setTitle] = useState('');
   const [topic, setTopic] = useState('');
   const [content, setContent] = useState('');
+  const [level, setLevel] = useState('intermedio');
+  const [autoGenerateFromStudents, setAutoGenerateFromStudents] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [previewPrep, setPreviewPrep] = useState<ClassPreparation | null>(null);
@@ -37,8 +39,8 @@ export function ClassPreparations() {
     async function loadPreparations() {
       setLoading(true);
       try {
-        const data = await apiFetch<ClassPreparation[]>('/api/preparations');
-        setClassPreparations(data);
+        const data = await apiFetch<{ preparations: ClassPreparation[] }>('/api/preparations');
+        setClassPreparations(data.preparations);
       } catch {
         // Use store data
       } finally {
@@ -53,10 +55,11 @@ export function ClassPreparations() {
     setIsSaving(true);
 
     try {
-      const prep = await apiFetch<ClassPreparation>('/api/preparations', {
+      const response = await apiFetch<{ preparation: ClassPreparation }>('/api/preparations', {
         method: 'POST',
         body: JSON.stringify({ title, topic, content }),
       });
+      const prep = response.preparation;
       setClassPreparations([prep, ...classPreparations]);
       setTitle('');
       setTopic('');
@@ -78,13 +81,34 @@ export function ClassPreparations() {
     setIsGenerating(true);
 
     try {
-      const result = await apiFetch<{ content: string }>('/api/preparations/generate', {
-        method: 'POST',
-        body: JSON.stringify({ topic, title: title || topic }),
-      });
-      setContent(result.content);
-      if (!title.trim()) setTitle(topic);
-      toast.success('Contenuto generato', { description: 'La preparazione è stata generata con IA.' });
+      if (autoGenerateFromStudents && students.length > 0) {
+        // Use advanced endpoint with student personalization
+        const studentIds = students.map(s => s.id);
+        const result = await apiFetch<{ preparation: ClassPreparation }>('/api/teacher/prepare-class', {
+          method: 'POST',
+          body: JSON.stringify({
+            topic,
+            title: title || topic,
+            level,
+            studentIds,
+          }),
+        });
+        const prep = result.preparation;
+        setContent(prep.content);
+        if (!title.trim()) setTitle(prep.title);
+        toast.success('Preparazione personalizzata generata', {
+          description: `Basata sui dati di ${students.length} student${students.length === 1 ? 'e' : 'i'}.`
+        });
+      } else {
+        // Use basic generation endpoint
+        const result = await apiFetch<{ content: string }>('/api/preparations/generate', {
+          method: 'POST',
+          body: JSON.stringify({ topic, title: title || topic, level }),
+        });
+        setContent(result.content);
+        if (!title.trim()) setTitle(topic);
+        toast.success('Contenuto generato', { description: 'La preparazione è stata generata con IA.' });
+      }
     } catch (err) {
       toast.error('Errore', { description: err instanceof Error ? err.message : 'Errore nella generazione' });
     } finally {
@@ -160,6 +184,46 @@ export function ClassPreparations() {
                     />
                   </div>
                 </div>
+
+                {/* Level selector */}
+                <div className="space-y-2">
+                  <Label className="text-amber-900">Livello di destinazione</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {['principiante', 'A1', 'A2', 'B1', 'intermedio', 'B2', 'C1', 'C2', 'avanzato'].map((l) => (
+                      <button
+                        key={l}
+                        type="button"
+                        onClick={() => setLevel(l)}
+                        className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition-all duration-200 hover:scale-[1.05] active:scale-[0.95] ${
+                          level === l
+                            ? 'bg-amber-100 border-amber-300 text-amber-800 shadow-sm'
+                            : 'bg-gray-50 text-gray-400 border-gray-100 hover:bg-gray-100'
+                        }`}
+                      >
+                        {l}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Personalization toggle */}
+                {students.length > 0 && (
+                  <div className="flex items-center gap-3 p-3 rounded-lg bg-violet-50 border border-violet-100">
+                    <input
+                      type="checkbox"
+                      id="auto-personalize"
+                      checked={autoGenerateFromStudents}
+                      onChange={(e) => setAutoGenerateFromStudents(e.target.checked)}
+                      className="rounded border-violet-300 text-violet-600 focus:ring-violet-500"
+                    />
+                    <label htmlFor="auto-personalize" className="text-sm text-violet-800">
+                      <span className="font-medium">Personalizza in base agli studenti</span>
+                      <span className="text-violet-600/60 block text-xs">
+                        Usa i dati di {students.length} student{students.length === 1 ? 'e' : 'i'} per adattare la lezione al loro livello
+                      </span>
+                    </label>
+                  </div>
+                )}
 
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">

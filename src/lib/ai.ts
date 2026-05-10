@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────
 // ScribIA — AI Service
 // ─────────────────────────────────────────────────────────────
-// Primary:  Google Gemini 3.1 Flash Lite via @google/genai SDK
+// Primary:  Google Gemini 2.0 Flash Lite via @google/genai SDK
 //           (requires GEMINI_API_KEY env var)
 // Fallback: z-ai-web-dev-sdk (sandbox / development)
 // ─────────────────────────────────────────────────────────────
@@ -25,7 +25,12 @@ async function getGemini(): Promise<GoogleGenAI> {
 
 async function getZAI() {
   if (!zaiInstance) {
-    zaiInstance = await ZAI.create();
+    try {
+      zaiInstance = await ZAI.create();
+    } catch (err) {
+      console.error('[ScribIA AI] Failed to initialize z-ai-web-dev-sdk:', err);
+      throw new Error('z-ai-web-dev-sdk initialization failed. Set GEMINI_API_KEY for production.');
+    }
   }
   return zaiInstance;
 }
@@ -52,6 +57,14 @@ export interface CilsLevelAssessment {
   targetLevelProvided?: string | null;
 }
 
+/** A study topic recommendation based on errors found */
+export interface StudyTopic {
+  topic: string;
+  description: string;
+  priority: 'alta' | 'media' | 'bassa';
+  resources: string[];
+}
+
 /** Full correction result returned by the AI */
 export interface CorrectionResult {
   correctedContent: string;
@@ -64,6 +77,7 @@ export interface CorrectionResult {
   errorAnnotations: string;
   errors: ErrorItem[];
   cilsLevelAssessment: CilsLevelAssessment | null;
+  studyTopics: StudyTopic[];
 }
 
 // ── Valid CILS levels ────────────────────────────────────────
@@ -97,6 +111,15 @@ Utilizza i descrittori ufficiali CILS (A1, A2, B1, B2, C1, C2) per determinare:
 
 Se targetLevel NON è fornito, passa passesTargetLevel a null e concentrati su estimatedLevel.
 
+### COMPITO 3: TEMI DI STUDIO CONSIGLIATI (obbligatorio)
+Sulla base degli errori trovati nel testo, genera una lista di temi di studio (studyTopics) che lo studente dovrebbe approfondire. Per ogni tema:
+- topic: nome del tema grammaticale o lessicale (es. "Ausiliari essere e avere", "Congiuntivo", "Connettivi testuali").
+- description: breve spiegazione del tema e perché è importante per lo studente (2-3 frasi in italiano).
+- priority: "alta" se l'errore è grave o frequente, "media" se moderato, "bassa" se minore.
+- resources: lista di 2-3 risorse consigliate per studiare il tema (libri, esercizi online, capitoli di grammatica).
+
+Genera almeno 1 tema di studio per ogni tipo di errore trovato, fino a un massimo di 5 temi. Se non ci sono errori, suggerisci 1-2 temi per migliorare ulteriormente.
+
 Rispondi ESCLUSIVAMENTE con un oggetto JSON valido, senza testo extra prima o dopo.
 
 ### STRUTTURA DELLA RISPOSTA JSON (DEVE INCLUDEERE TUTTI I CAMPI)
@@ -126,7 +149,21 @@ Rispondi ESCLUSIVAMENTE con un oggetto JSON valido, senza testo extra prima o do
     "passesTargetLevel": true,
     "readiness": "Il testo mostra un solido B1 con buona coerenza e lessico adeguato. Per raggiungere B2, ampliare il vocabolario e usare strutture sintattiche più complesse.",
     "targetLevelProvided": "B1"
-  }
+  },
+  "studyTopics": [
+    {
+      "topic": "Ausiliari essere e avere",
+      "description": "I verbi di movimento e alcuni verbi riflessivi richiedono l'ausiliare essere anziché avere. È fondamentale conoscere la lista dei verbi che usano essere.",
+      "priority": "alta",
+      "resources": ["Grammatica italiana - Capitolo ausiliari", "Esercizi online su essere/avere", "Alma Edizioni - Verbi italiani"]
+    },
+    {
+      "topic": "Accenti obbligatori",
+      "description": "Alcune parole in italiano richiedono l'accento grafico obbligatorio (più, può, però, cioè, è). La mancanza dell'accento costituisce un errore ortografico.",
+      "priority": "media",
+      "resources": ["Regole di ortografia italiana", "Esercizi sugli accenti"]
+    }
+  ]
 }`;
 
 // ── Build correction prompt with optional targetLevel ────────
@@ -191,6 +228,18 @@ function parseCorrectionResponse(response: string, originalContent: string, targ
         };
       }
 
+      // Parse study topics
+      const studyTopics: StudyTopic[] = Array.isArray(parsed.studyTopics)
+        ? parsed.studyTopics
+          .filter((t: unknown) => t && typeof t === 'object')
+          .map((t: Record<string, unknown>) => ({
+            topic: String(t.topic || 'Argomento non specificato'),
+            description: String(t.description || ''),
+            priority: (['alta', 'media', 'bassa'].includes(String(t.priority)) ? String(t.priority) : 'media') as 'alta' | 'media' | 'bassa',
+            resources: Array.isArray(t.resources) ? t.resources.map((r: unknown) => String(r)) : [],
+          }))
+        : [];
+
       return {
         correctedContent: parsed.correctedContent || originalContent,
         score: Math.min(10, Math.max(1, Number(parsed.score) || 5)),
@@ -202,11 +251,22 @@ function parseCorrectionResponse(response: string, originalContent: string, targ
         errorAnnotations: parsed.errorAnnotations || '',
         errors,
         cilsLevelAssessment,
+        studyTopics,
       };
     }
   } catch (e) {
     console.error('[ScribIA AI] Failed to parse AI response as JSON:', e);
   }
+
+  // Default study topics fallback based on generic grammar areas
+  const defaultStudyTopics: StudyTopic[] = [
+    {
+      topic: 'Grammatica italiana di base',
+      description: 'Rivedi le regole fondamentali della grammatica italiana, inclusi ausiliari, concordanze e strutture verbali.',
+      priority: 'media',
+      resources: ['Grammatica italiana per stranieri', 'Esercizi interattivi online'],
+    },
+  ];
 
   // Fallback
   return {
@@ -225,6 +285,7 @@ function parseCorrectionResponse(response: string, originalContent: string, targ
       readiness: 'Valutazione del livello non disponibile.',
       targetLevelProvided: targetLevel || null,
     },
+    studyTopics: defaultStudyTopics,
   };
 }
 
@@ -234,7 +295,7 @@ async function correctEssayGemini(title: string, content: string, topic?: string
   const prompt = buildCorrectionPrompt(title, content, topic, targetLevel);
 
   const response = await ai.models.generateContent({
-    model: 'gemini-3.1-flash-lite',
+    model: 'gemini-2.0-flash-lite',
     contents: prompt,
     config: {
       systemInstruction: SYSTEM_PROMPT_CORRECTION,
@@ -289,7 +350,6 @@ function correctEssaySimulated(
     [/\bperché\s+che\b/gi, 'perché', 'grammatica', '#f97316'],
     [/\bpiu\b/g, 'più', 'ortografia', '#ef4444'],
     [/\bpuo\b/g, 'può', 'ortografia', '#ef4444'],
-    [/\bpiu\b/g, 'più', 'ortografia', '#ef4444'],
     [/\bquesto\s+le\b/gi, 'queste le', 'grammatica', '#f97316'],
     [/\bun\s+università\b/gi, "un'università", 'grammatica', '#f97316'],
     [/\b lo gli\b/gi, ' gli', 'grammatica', '#f97316'],
@@ -395,6 +455,65 @@ function correctEssaySimulated(
     );
   }
 
+  // Generate study topics from detected error types
+  const errorTypes = new Set(errors.map(e => e.type));
+  const studyTopics: StudyTopic[] = [];
+
+  const topicMap: Record<string, StudyTopic> = {
+    grammatica: {
+      topic: 'Ausiliari essere e avere',
+      description: 'I verbi di movimento (andare, venire, uscire, tornare, arrivare, partire) e i verbi riflessivi richiedono l\'ausiliare "essere" anziché "avere". Questo è uno degli errori più comuni per chi studia l\'italiano.',
+      priority: 'alta',
+      resources: ['Grammatica italiana - Capitolo ausiliari', 'Esercizi online su essere/avere', 'Alma Edizioni - Verbi italiani'],
+    },
+    ortografia: {
+      topic: 'Accenti e ortografia',
+      description: 'Molte parole in italiano richiedono l\'accento grafico obbligatorio (più, può, però, cioè, è). La mancanza dell\'accento costituisce un errore ortografico che può cambiare il significato della parola.',
+      priority: 'alta',
+      resources: ['Regole di ortografia italiana', 'Esercizi sugli accenti obbligatori', 'Zanichelli - Ortografia italiana'],
+    },
+    punteggiatura: {
+      topic: 'Punteggiatura',
+      description: 'La punteggiatura corretta è essenziale per la chiarezza del testo. Rileggi ad alta voce per verificare le pause naturali e usare virgole, punti e punto e virgola in modo appropriato.',
+      priority: 'media',
+      resources: ['Regole di punteggiatura italiana', 'Esercizi interattivi sulla punteggiatura'],
+    },
+    sintassi: {
+      topic: 'Strutture sintattiche',
+      description: 'La struttura della frase italiana segue l\'ordine Soggetto-Verbo-Oggetto. Le frasi subordinate e le costruzioni complesse richiedono attenzione alla concordanza e al posizionamento dei pronomi.',
+      priority: 'alta',
+      resources: ['Sintassi italiana - Frasi complesse', 'Esercizi sulle subordinate', 'Grammatica avanzata - Schena editore'],
+    },
+    lessico: {
+      topic: 'Lessico e registro linguistico',
+      description: 'Scegliere il vocabolo più appropriato al contesto e al registro (formale/informale) migliora la qualità del testo. Un dizionario dei sinonimi è uno strumento prezioso.',
+      priority: 'media',
+      resources: ['Dizionario dei sinonimi e contrari', 'Lessico italiano per stranieri', 'Esercizi sul registro linguistico'],
+    },
+    coerenza: {
+      topic: 'Coerenza e coesione testuale',
+      description: 'Un testo coerente usa connettivi appropriati (inoltre, tuttavia, di conseguenza) per collegare le idee. La progressione logica dei concetti rende la scrittura più efficace e leggibile.',
+      priority: 'media',
+      resources: ['Coesione e coerenza testuale', 'Esercizi sui connettivi', 'Scrittura argomentativa - Guida pratica'],
+    },
+  };
+
+  for (const type of errorTypes) {
+    if (topicMap[type]) {
+      studyTopics.push(topicMap[type]);
+    }
+  }
+
+  // If no errors found, suggest general improvement topics
+  if (studyTopics.length === 0) {
+    studyTopics.push({
+      topic: 'Ampliamento del lessico',
+      description: 'Il testo non presenta errori significativi. Per migliorare ulteriormente, amplia il vocabolario con sinonimi, espressioni idiomatiche e un registro più vario.',
+      priority: 'bassa',
+      resources: ['Dizionario dei sinonimi e contrari', 'Lettura di testi autentici italiani'],
+    });
+  }
+
   return {
     correctedContent,
     score,
@@ -414,6 +533,7 @@ function correctEssaySimulated(
       readiness: readinessTexts[estimatedLevel] || readinessTexts.A2,
       targetLevelProvided: targetLevel || null,
     },
+    studyTopics,
   };
 }
 
@@ -467,7 +587,7 @@ async function generateClassPreparationGemini(topic: string, level: string): Pro
   const prompt = buildPreparationPrompt(topic, level);
 
   const response = await ai.models.generateContent({
-    model: 'gemini-3.1-flash-lite',
+    model: 'gemini-2.0-flash-lite',
     contents: prompt,
     config: {
       systemInstruction: SYSTEM_PROMPT_PREPARATION,
@@ -486,7 +606,7 @@ async function generateClassPreparationZAI(topic: string, level: string): Promis
 
   const completion = await zai.chat.completions.create({
     messages: [
-      { role: 'assistant', content: SYSTEM_PROMPT_PREPARATION },
+      { role: 'system', content: SYSTEM_PROMPT_PREPARATION },
       { role: 'user', content: prompt }
     ],
     thinking: { type: 'disabled' }
@@ -560,5 +680,5 @@ export async function generateClassPreparation(
 
 // ── Utility: get current AI provider name ────────────────────
 export function getAIProviderName(): string {
-  return useGemini ? 'Google Gemini 3.1 Flash Lite' : 'z-ai-web-dev-sdk (sandbox)';
+  return useGemini ? 'Google Gemini 2.0 Flash Lite' : 'z-ai-web-dev-sdk (sandbox)';
 }

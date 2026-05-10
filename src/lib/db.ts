@@ -250,12 +250,11 @@ function createSupabaseOps(tableName: string): TableOps {
         query = applyOrderBy(query, opts.orderBy);
       }
 
-      if (opts?.limit) {
-        query = query.limit(opts.limit);
-      }
-
       if (opts?.offset) {
-        query = query.range(opts.offset, opts.offset + (opts.limit || 100) - 1);
+        const limit = opts.limit || 100;
+        query = query.range(opts.offset, opts.offset + limit - 1);
+      } else if (opts?.limit) {
+        query = query.limit(opts.limit);
       }
 
       const { data, error } = await query;
@@ -310,7 +309,8 @@ function createSupabaseOps(tableName: string): TableOps {
     },
 
     async deleteMany(opts: DeleteOptions): Promise<number> {
-      let query = supabase.from(tableName).delete();
+      // Use .select() before .delete() to get the deleted rows count
+      let query = supabase.from(tableName).delete().select('id');
 
       for (const [key, value] of Object.entries(opts.where)) {
         const col = toSnakeCase(key);
@@ -321,13 +321,13 @@ function createSupabaseOps(tableName: string): TableOps {
         }
       }
 
-      const { count, error } = await query;
+      const { data, error } = await query;
 
       if (error) {
         throw fromSupabaseError(error, `deleteMany on ${tableName}`);
       }
 
-      return count ?? 0;
+      return Array.isArray(data) ? data.length : 0;
     },
 
     async count(opts?: CountOptions): Promise<number> {

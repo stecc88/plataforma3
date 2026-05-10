@@ -33,8 +33,8 @@ export function TeacherNotes() {
     async function loadNotes() {
       setLoading(true);
       try {
-        const data = await apiFetch<TeacherNote[]>('/api/notes');
-        setTeacherNotes(data);
+        const data = await apiFetch<{ notes: TeacherNote[] }>('/api/notes');
+        setTeacherNotes(data.notes);
       } catch {
         // Use store data
       } finally {
@@ -49,10 +49,11 @@ export function TeacherNotes() {
     setIsSaving(true);
 
     try {
-      const note = await apiFetch<TeacherNote>('/api/notes', {
+      const response = await apiFetch<{ note: TeacherNote }>('/api/notes', {
         method: 'POST',
         body: JSON.stringify({ studentId: selectedStudentId, content: noteContent }),
       });
+      const note = response.note;
       setTeacherNotes([note, ...teacherNotes]);
       setNoteContent('');
       setSelectedStudentId('');

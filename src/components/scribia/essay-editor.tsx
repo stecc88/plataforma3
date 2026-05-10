@@ -56,10 +56,11 @@ export function EssayEditor() {
     setIsSaving(true);
 
     try {
-      const essay = await apiFetch<Essay>('/api/essays', {
+      const response = await apiFetch<{ essay: Essay }>('/api/essays', {
         method: 'POST',
         body: JSON.stringify({ title, topic: topic || undefined, content }),
       });
+      const essay = response.essay;
       setCurrentEssay(essay);
       setEssays([essay, ...essays.filter(e => e.id !== essay.id)]);
       toast.success('Bozza salvata', { description: 'Il testo è stato salvato con successo.' });
@@ -83,22 +84,34 @@ export function EssayEditor() {
     setIsSubmitting(true);
 
     try {
-      // Save the essay first
-      const essay = await apiFetch<Essay>('/api/essays', {
-        method: 'POST',
-        body: JSON.stringify({ title, topic: topic || undefined, content }),
-      });
+      // Save or update the essay first
+      let essayId: string;
+      if (currentEssay?.id) {
+        // Essay already saved — update it
+        const updateResponse = await apiFetch<{ essay: Essay }>(`/api/essays/${currentEssay.id}`, {
+          method: 'PUT',
+          body: JSON.stringify({ title, topic: topic || undefined, content }),
+        });
+        essayId = updateResponse.essay.id;
+      } else {
+        // New essay — create it
+        const createResponse = await apiFetch<{ essay: Essay }>('/api/essays', {
+          method: 'POST',
+          body: JSON.stringify({ title, topic: topic || undefined, content }),
+        });
+        essayId = createResponse.essay.id;
+      }
 
       // Now submit for AI correction (with optional targetLevel)
       const correctionBody: Record<string, unknown> = {};
       if (targetLevel) {
         correctionBody.targetLevel = targetLevel;
       }
-      const corrected = await apiFetch<Essay>(`/api/essays/${essay.id}/correct`, {
+      const correctionResponse = await apiFetch<{ essay: Essay }>(`/api/essays/${essayId}/correct`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(correctionBody),
       });
+      const corrected = correctionResponse.essay;
 
       setCurrentEssay(corrected);
       setEssays([corrected, ...essays.filter(e => e.id !== corrected.id)]);

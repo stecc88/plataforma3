@@ -12,13 +12,12 @@ import { SignJWT, jwtVerify } from 'jose';
 import { hash, compare } from 'bcryptjs';
 import { NextRequest, NextResponse } from 'next/server';
 
+const resolvedJwtSecret = process.env.JWT_SECRET || '';
+if (!resolvedJwtSecret && process.env.NODE_ENV === 'production') {
+  throw new Error('JWT_SECRET environment variable is required in production');
+}
 const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || (() => {
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('JWT_SECRET environment variable is required in production');
-    }
-    return 'scribia-dev-secret-key-not-for-production';
-  })()
+  resolvedJwtSecret || 'scribia-dev-secret-key-not-for-production'
 );
 
 // ─── JWT Payload Interface ───────────────────────────────────
@@ -99,6 +98,14 @@ export async function getAuthUser(request: NextRequest): Promise<JWTPayload | Ne
   if (payload.status === 'SUSPENDED') {
     return NextResponse.json(
       { error: 'Account sospeso. Contatta l\'amministratore.' },
+      { status: 403 }
+    );
+  }
+
+  // Check if user status is PENDING (not yet approved)
+  if (payload.status === 'PENDING') {
+    return NextResponse.json(
+      { error: 'Account in attesa di approvazione. Contatta l\'amministratore.' },
       { status: 403 }
     );
   }
