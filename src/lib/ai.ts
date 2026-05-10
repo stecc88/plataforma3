@@ -13,8 +13,10 @@ import { GoogleGenAI } from '@google/genai';
 const geminiApiKey = process.env.GEMINI_API_KEY || '';
 const useGemini = !!geminiApiKey && geminiApiKey !== 'AIzaSy...' && geminiApiKey.length > 10;
 
+// Detect if we're running in a production serverless environment (Vercel)
+const isServerless = process.env.VERCEL === '1' || process.env.AWS_LAMBDA_FUNCTION_NAME;
+
 let geminiClient: GoogleGenAI | null = null;
-let zaiInstance: Awaited<ReturnType<typeof ZAI.create>> | null = null;
 
 async function getGemini(): Promise<GoogleGenAI> {
   if (!geminiClient) {
@@ -23,16 +25,24 @@ async function getGemini(): Promise<GoogleGenAI> {
   return geminiClient;
 }
 
-async function getZAI() {
-  if (!zaiInstance) {
-    try {
-      zaiInstance = await ZAI.create();
-    } catch (err) {
-      console.error('[ScribIA AI] Failed to initialize z-ai-web-dev-sdk:', err);
-      throw new Error('z-ai-web-dev-sdk initialization failed. Set GEMINI_API_KEY for production.');
-    }
+/**
+ * Attempt to get z-ai-web-dev-sdk instance.
+ * Returns null if unavailable (e.g., production/Vercel serverless).
+ */
+async function getZAI(): Promise<Awaited<ReturnType<typeof ZAI.create>> | null> {
+  // z-ai-web-dev-sdk is a sandbox/dev-only SDK that doesn't work in
+  // production serverless environments like Vercel.
+  if (isServerless) {
+    console.warn('[ScribIA AI] z-ai-web-dev-sdk skipped in serverless environment');
+    return null;
   }
-  return zaiInstance;
+  try {
+    const instance = await ZAI.create();
+    return instance;
+  } catch (err) {
+    console.warn('[ScribIA AI] z-ai-web-dev-sdk initialization failed:', err);
+    return null;
+  }
 }
 
 // ── Shared types ─────────────────────────────────────────────
@@ -312,6 +322,9 @@ async function correctEssayGemini(title: string, content: string, topic?: string
 // ── Correct essay via z-ai-web-dev-sdk ───────────────────────
 async function correctEssayZAI(title: string, content: string, topic?: string, targetLevel?: string): Promise<CorrectionResult> {
   const zai = await getZAI();
+  if (!zai) {
+    throw new Error('z-ai-web-dev-sdk not available. Set GEMINI_API_KEY for production.');
+  }
   const prompt = buildCorrectionPrompt(title, content, topic, targetLevel);
 
   const completion = await zai.chat.completions.create({
@@ -602,6 +615,9 @@ async function generateClassPreparationGemini(topic: string, level: string): Pro
 // ── Generate class preparation via z-ai-web-dev-sdk ──────────
 async function generateClassPreparationZAI(topic: string, level: string): Promise<string> {
   const zai = await getZAI();
+  if (!zai) {
+    throw new Error('z-ai-web-dev-sdk not available. Set GEMINI_API_KEY for production.');
+  }
   const prompt = buildPreparationPrompt(topic, level);
 
   const completion = await zai.chat.completions.create({
@@ -680,5 +696,7 @@ export async function generateClassPreparation(
 
 // ── Utility: get current AI provider name ────────────────────
 export function getAIProviderName(): string {
-  return useGemini ? 'Google Gemini 2.0 Flash Lite' : 'z-ai-web-dev-sdk (sandbox)';
+  if (useGemini) return 'Google Gemini 2.0 Flash Lite';
+  if (isServerless) return 'Simulated (no API key)';
+  return 'z-ai-web-dev-sdk (sandbox)';
 }

@@ -1006,6 +1006,11 @@ export function EssayDetail() {
         </motion.div>
       )}
 
+      {/* Structured errors list with grammar rules and suggestions */}
+      {hasStructuredErrors && showResults && !isCorrecting && (
+        <StructuredErrorsList errors={essay.errors! as ErrorItem[]} />
+      )}
+
       {/* Side by side comparison (fallback when no structured errors) */}
       {hasCorrection && !hasStructuredErrors && showResults && !isCorrecting && (
         <motion.div
