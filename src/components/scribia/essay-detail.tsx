@@ -234,6 +234,7 @@ function CilsLevelCard({ assessment }: {
 function StructuredErrorsList({ errors }: { errors: ErrorItem[] }) {
   const [expanded, setExpanded] = useState(true);
   const [visibleCount, setVisibleCount] = useState(3);
+  const [expandedErrors, setExpandedErrors] = useState<Set<number>>(new Set());
 
   if (!errors || errors.length === 0) return null;
 
@@ -335,19 +336,48 @@ function StructuredErrorsList({ errors }: { errors: ErrorItem[] }) {
                         <p className="text-sm text-amber-700/70 leading-relaxed">{err.explanation}</p>
                       )}
 
-                      {/* Grammar rule + suggestion */}
-                      <div className="mt-2 grid sm:grid-cols-2 gap-2">
-                        {err.grammarRule && (
-                          <div className="text-xs p-2 rounded bg-amber-50 text-amber-700/70 transition-colors duration-200 hover:bg-amber-100">
-                            <span className="font-medium text-amber-800">Regola:</span> {err.grammarRule}
-                          </div>
-                        )}
-                        {err.suggestion && (
-                          <div className="text-xs p-2 rounded bg-emerald-50 text-emerald-700/70 transition-colors duration-200 hover:bg-emerald-100">
-                            <span className="font-medium text-emerald-800">Consiglio:</span> {err.suggestion}
-                          </div>
-                        )}
-                      </div>
+                      {/* Grammar details toggle */}
+                      {(err.grammarRule || err.suggestion) && (
+                        <div className="mt-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setExpandedErrors(prev => {
+                                const next = new Set(prev);
+                                if (next.has(idx)) next.delete(idx);
+                                else next.add(idx);
+                                return next;
+                              });
+                            }}
+                            className="text-amber-700 hover:bg-amber-50 hover:text-amber-900 gap-1 text-xs h-7 px-2"
+                          >
+                            <BookOpen className="h-3 w-3" />
+                            {expandedErrors.has(idx) ? 'Nascondi dettagli' : 'Dettagli grammaticali'}
+                            {expandedErrors.has(idx) ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                          </Button>
+                          {expandedErrors.has(idx) && (
+                            <motion.div
+                              initial={{ opacity: 0, height: 0 }}
+                              animate={{ opacity: 1, height: 'auto' }}
+                              exit={{ opacity: 0, height: 0 }}
+                              transition={{ duration: 0.2 }}
+                              className="grid sm:grid-cols-2 gap-2 mt-2"
+                            >
+                              {err.grammarRule && (
+                                <div className="text-xs p-2 rounded bg-violet-50 border border-violet-100 text-violet-800/80 transition-colors duration-200 hover:bg-violet-100">
+                                  <span className="font-medium text-violet-700">Regola:</span> {err.grammarRule}
+                                </div>
+                              )}
+                              {err.suggestion && (
+                                <div className="text-xs p-2 rounded bg-emerald-50 border border-emerald-100 text-emerald-800/80 transition-colors duration-200 hover:bg-emerald-100">
+                                  <span className="font-medium text-emerald-700">Consiglio:</span> {err.suggestion}
+                                </div>
+                              )}
+                            </motion.div>
+                          )}
+                        </div>
+                      )}
                     </motion.div>
                   ))}
                 </div>

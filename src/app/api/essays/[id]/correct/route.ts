@@ -105,25 +105,56 @@ export async function POST(
       ? JSON.stringify(correction.studyTopics)
       : null;
 
-    // Update essay
-    const updated = await essayOps.update({
-      where: { id },
-      data: {
-        correctedContent: correction.correctedContent,
-        score: correction.score,
-        grammarScore: correction.grammarScore,
-        coherenceScore: correction.coherenceScore,
-        vocabularyScore: correction.vocabularyScore,
-        clarityScore: correction.clarityScore,
-        aiFeedback: correction.aiFeedback,
-        errorAnnotations: correction.errorAnnotations,
-        cilsLevelAssessment,
-        errors,
-        studyTopics,
-        status: 'CORRECTED',
-        updatedAt: now,
-      },
-    });
+    // Update essay — try full update first, then fall back to minimal update
+    // if Supabase columns (study_topics, errors, cils_level_assessment) don't exist yet
+    let updated: Record<string, unknown>;
+    try {
+      updated = await essayOps.update({
+        where: { id },
+        data: {
+          correctedContent: correction.correctedContent,
+          score: correction.score,
+          grammarScore: correction.grammarScore,
+          coherenceScore: correction.coherenceScore,
+          vocabularyScore: correction.vocabularyScore,
+          clarityScore: correction.clarityScore,
+          aiFeedback: correction.aiFeedback,
+          errorAnnotations: correction.errorAnnotations,
+          cilsLevelAssessment,
+          errors,
+          studyTopics,
+          status: 'CORRECTED',
+          updatedAt: now,
+        },
+      });
+    } catch (dbError) {
+      console.warn('[ScribIA] Full update failed, trying minimal update:', dbError);
+      // Fallback: update without the new columns that might not exist yet
+      updated = await essayOps.update({
+        where: { id },
+        data: {
+          correctedContent: correction.correctedContent,
+          score: correction.score,
+          grammarScore: correction.grammarScore,
+          coherenceScore: correction.coherenceScore,
+          vocabularyScore: correction.vocabularyScore,
+          clarityScore: correction.clarityScore,
+          aiFeedback: correction.aiFeedback,
+          errorAnnotations: correction.errorAnnotations,
+          status: 'CORRECTED',
+          updatedAt: now,
+        },
+      });
+      // Try to add the new columns separately
+      try {
+        updated = await essayOps.update({
+          where: { id },
+          data: { cilsLevelAssessment, errors, studyTopics },
+        });
+      } catch {
+        console.warn('[ScribIA] Could not save cilsLevelAssessment/errors/studyTopics — columns may not exist in DB yet');
+      }
+    }
 
     // Get student name
     const student = await userOps.findUnique({
@@ -190,8 +221,9 @@ export async function POST(
     });
   } catch (error) {
     console.error('Correct essay error:', error);
+    const message = error instanceof Error ? error.message : 'Errore interno del server';
     return NextResponse.json(
-      { error: 'Errore interno del server' },
+      { error: 'Errore interno del server', detail: message },
       { status: 500 }
     );
   }

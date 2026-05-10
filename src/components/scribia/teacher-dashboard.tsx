@@ -13,6 +13,7 @@ import {
   GraduationCap,
   Award,
   BarChart3,
+  Sparkles,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -86,6 +87,7 @@ export function TeacherDashboard() {
   const [stats, setStats] = useState<TeacherStats | null>(null);
   const [enrichedStudents, setEnrichedStudents] = useState<StudentWithStats[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isAutoGenerating, setIsAutoGenerating] = useState(false);
 
   useEffect(() => {
     async function loadData() {
@@ -121,6 +123,58 @@ export function TeacherDashboard() {
     { fascia: '6-7', studenti: correctedEssays.filter((e) => (e.score ?? 0) > 5 && (e.score ?? 0) <= 7).length },
     { fascia: '8-10', studenti: correctedEssays.filter((e) => (e.score ?? 0) > 7).length },
   ];
+
+  // Auto-generate a lesson preparation based on class performance
+  const handleAutoGeneratePrep = async () => {
+    setIsAutoGenerating(true);
+    try {
+      const studentIds = enrichedStudents.map(s => s.id);
+      // Determine the most common weak area
+      const avgGrammar = correctedEssays.length > 0
+        ? correctedEssays.reduce((s, e) => s + (e.grammarScore ?? 0), 0) / correctedEssays.length : 5;
+      const avgCoherence = correctedEssays.length > 0
+        ? correctedEssays.reduce((s, e) => s + (e.coherenceScore ?? 0), 0) / correctedEssays.length : 5;
+      const avgVocabulary = correctedEssays.length > 0
+        ? correctedEssays.reduce((s, e) => s + (e.vocabularyScore ?? 0), 0) / correctedEssays.length : 5;
+      const avgClarity = correctedEssays.length > 0
+        ? correctedEssays.reduce((s, e) => s + (e.clarityScore ?? 0), 0) / correctedEssays.length : 5;
+
+      const skills = [
+        { name: 'grammatica', score: avgGrammar },
+        { name: 'coerenza testuale', score: avgCoherence },
+        { name: 'lessico', score: avgVocabulary },
+        { name: 'chiarezza espositiva', score: avgClarity },
+      ].sort((a, b) => a.score - b.score);
+
+      const weakestArea = skills[0].name;
+      const avgScore = correctedEssays.length > 0
+        ? correctedEssays.reduce((s, e) => s + (e.score ?? 0), 0) / correctedEssays.length : 5;
+
+      // Determine level
+      let level = 'intermedio';
+      if (avgScore >= 8) level = 'C1';
+      else if (avgScore >= 7) level = 'B2';
+      else if (avgScore >= 6) level = 'B1';
+      else if (avgScore >= 4) level = 'A2';
+      else level = 'A1';
+
+      await apiFetch('/api/teacher/prepare-class', {
+        method: 'POST',
+        body: JSON.stringify({
+          topic: `Rinforzo ${weakestArea} - Lezione personalizzata`,
+          title: `Lezione: ${weakestArea} (auto-generata)`,
+          level,
+          studentIds,
+        }),
+      });
+
+      setCurrentView('class-preparations');
+    } catch {
+      // Silently fail - user can still use manual generation
+    } finally {
+      setIsAutoGenerating(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -209,6 +263,14 @@ export function TeacherDashboard() {
         >
           <BookMarked className="h-4 w-4" />
           Preparazione lezione
+        </Button>
+        <Button
+          onClick={handleAutoGeneratePrep}
+          disabled={isAutoGenerating || enrichedStudents.length === 0}
+          className="bg-gradient-to-r from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700 text-white shadow-md transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]"
+        >
+          {isAutoGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+          Auto-genera lezione
         </Button>
         <Button
           variant="outline"
