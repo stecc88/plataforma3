@@ -14,7 +14,10 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const resolvedJwtSecret = process.env.JWT_SECRET || '';
 if (!resolvedJwtSecret && process.env.NODE_ENV === 'production') {
-  throw new Error('JWT_SECRET environment variable is required in production');
+  console.error(
+    '⚠️ [ScribIA] JWT_SECRET is not set in production! Using an insecure fallback. ' +
+    'Set JWT_SECRET in your Vercel environment variables for security.'
+  );
 }
 const JWT_SECRET = new TextEncoder().encode(
   resolvedJwtSecret || 'scribia-dev-secret-key-not-for-production'

@@ -9,6 +9,18 @@ export async function GET() {
   const supabaseAnonAvailable = isSupabaseAnonConfigured();
   const demoMode = isDemoMode();
   const aiProvider = getAIProviderName();
+  const jwtSecretSet = !!process.env.JWT_SECRET;
+
+  const warnings: string[] = [];
+  if (!jwtSecretSet) {
+    warnings.push('JWT_SECRET not set — sessions may not persist across server restarts. Set JWT_SECRET in Vercel environment variables.');
+  }
+  if (!supabaseConfigured) {
+    warnings.push('Supabase not configured — using demo mode (in-memory, data will not persist). Set NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, and SUPABASE_SERVICE_ROLE_KEY in Vercel environment variables.');
+  }
+  if (!process.env.GEMINI_API_KEY) {
+    warnings.push('GEMINI_API_KEY not set — using fallback AI provider. Set GEMINI_API_KEY in Vercel environment variables for best results.');
+  }
 
   return NextResponse.json({
     status: {
@@ -18,6 +30,8 @@ export async function GET() {
       aiProvider,
       aiProviderType: aiProvider.includes('Gemini') ? 'gemini' : 'z-ai-sdk',
       demoMode,
+      jwtSecretSet,
+      warnings: warnings.length > 0 ? warnings : undefined,
     },
   });
 }
